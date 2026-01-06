@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "CuraQ Saver",
   "version": "1.0.0",
-  "description": "現在開いている記事をCuraQに保存します。ログインウォールのある記事にも対応。",
+  "description": "現在開いている記事をCuraQに保存します。",
   "permissions": [
     "activeTab",
     "contextMenus",
