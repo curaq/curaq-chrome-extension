@@ -28,7 +28,7 @@
 
 1. このリポジトリをクローンまたはダウンロード
    ```bash
-   git clone https://github.com/YOUR_USERNAME/curaq-chrome-extension.git
+   git clone https://github.com/togishima/curaq-chrome-extension.git
    ```
 
 2. Chromeで `chrome://extensions/` を開く
