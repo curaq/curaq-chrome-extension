@@ -18,9 +18,17 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 // Handle context menu clicks
-chrome.contextMenus.onClicked.addListener((info, tab) => {
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === 'save-to-curaq') {
-    saveArticleToCuraQ(tab);
+    // Show immediate feedback
+    showNotification('保存中...', 'CuraQに記事を保存しています');
+
+    try {
+      await saveArticleToCuraQ(tab);
+    } catch (error) {
+      console.error('[CuraQ] Context menu save error:', error);
+      showNotification('エラー', '記事の保存に失敗しました');
+    }
   }
 });
 
