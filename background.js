@@ -21,15 +21,20 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === 'save-to-curaq') {
     try {
-      const result = await saveArticleToCuraQ(tab);
+      const token = await getApiToken();
+      const url = tab.url;
+      const title = tab.title || '';
 
-      // Show notification based on result
-      if (result.success && result.tokenless) {
-        showNotification('CuraQで開きました', '確認画面から保存してください');
-      } else if (!result.success) {
-        showNotification('エラー', result.error || '記事の保存に失敗しました');
+      // If no token, open GET /share in new tab
+      if (!token) {
+        const shareUrl = `https://curaq.pages.dev/share?url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}`;
+        chrome.tabs.create({ url: shareUrl });
+        return;
       }
-      // For token mode, notification is already shown in saveArticleToCuraQ
+
+      // Token exists: open confirmation page
+      const confirmUrl = chrome.runtime.getURL(`confirm.html?url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}`);
+      chrome.tabs.create({ url: confirmUrl });
     } catch (error) {
       console.error('[CuraQ] Context menu save error:', error);
       showNotification('エラー', '記事の保存に失敗しました');
