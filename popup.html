@@ -323,6 +323,31 @@
       </button>
     </div>
 
+    <!-- Confirmation state (Pro with token) -->
+    <div id="confirmation-state" class="hidden">
+      <div class="status info">
+        この記事を保存しますか？
+      </div>
+      <div style="margin-bottom: 12px; padding: 12px; background: white; border-radius: 6px; border: 1px solid #e5e7eb;">
+        <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">タイトル</div>
+        <div id="confirm-title" style="font-size: 13px; color: #111827; margin-bottom: 8px; line-height: 1.4;"></div>
+        <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">URL</div>
+        <div id="confirm-url" style="font-size: 11px; color: #6b7280; word-break: break-all; line-height: 1.4;"></div>
+      </div>
+      <div style="font-size: 11px; color: #6b7280; margin-bottom: 12px; padding: 8px; background: #f3f4f6; border-radius: 6px;">
+        ⓘ URLのみ送信されます。ページ内容は送信されません。
+      </div>
+      <div class="button-group">
+        <button id="cancel-button" class="button button-secondary">
+          キャンセル
+        </button>
+        <button id="confirm-send-button" class="button button-primary">
+          <span id="confirm-send-text">送信</span>
+          <div id="confirm-send-spinner" class="spinner hidden"></div>
+        </button>
+      </div>
+    </div>
+
     <!-- Settings state -->
     <div id="settings-state" class="hidden">
       <div class="status info">

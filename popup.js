@@ -13,6 +13,7 @@ const noProState = document.getElementById('no-pro-state');
 const readyState = document.getElementById('ready-state');
 const successState = document.getElementById('success-state');
 const errorState = document.getElementById('error-state');
+const confirmationState = document.getElementById('confirmation-state');
 const settingsState = document.getElementById('settings-state');
 
 const settingsToggle = document.getElementById('settings-toggle');
@@ -43,6 +44,7 @@ const allStates = [
   readyState,
   successState,
   errorState,
+  confirmationState,
   settingsState
 ];
 
@@ -71,6 +73,9 @@ function showState(state) {
       break;
     case 'error':
       errorState.classList.remove('hidden');
+      break;
+    case 'confirmation':
+      confirmationState.classList.remove('hidden');
       break;
     case 'settings':
       settingsState.classList.remove('hidden');
@@ -136,34 +141,36 @@ async function saveToken(token) {
   }
 }
 
+// Store article data for confirmation
+let pendingArticle = null;
+
 // Save current article
 async function saveCurrentArticle() {
   try {
     // Disable button and show spinner
     saveButton.disabled = true;
-    saveButtonText.textContent = '保存中...';
+    saveButtonText.textContent = '確認中...';
     saveSpinner.classList.remove('hidden');
 
     // Get current tab
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-    // Send message to background script to save article
-    // Background script will handle token-less mode automatically
+    // Send message to background script to prepare article
     const response = await chrome.runtime.sendMessage({
       action: 'saveArticle',
       tabId: tab.id
     });
 
     if (response.success) {
-      // Check if we have a token or not
-      const tokenStatus = window.tokenStatus || await chrome.runtime.sendMessage({ action: 'checkToken' });
-
-      if (tokenStatus.valid) {
-        // Token mode: background save completed
-        showState('success');
-      } else {
+      if (response.tokenless) {
         // No token mode: opened in new tab, close popup
         window.close();
+      } else if (response.needsConfirmation) {
+        // Token mode: show confirmation screen
+        pendingArticle = { url: response.url, title: response.title };
+        document.getElementById('confirm-title').textContent = response.title;
+        document.getElementById('confirm-url').textContent = response.url;
+        showState('confirmation');
       }
     } else {
       errorMessage.textContent = response.error || '保存に失敗しました';
@@ -178,6 +185,42 @@ async function saveCurrentArticle() {
     saveButton.disabled = false;
     saveButtonText.textContent = 'この記事を保存';
     saveSpinner.classList.add('hidden');
+  }
+}
+
+// Send article after confirmation
+async function sendConfirmedArticle() {
+  if (!pendingArticle) return;
+
+  try {
+    // Get button elements
+    const confirmSendButton = document.getElementById('confirm-send-button');
+    const confirmSendText = document.getElementById('confirm-send-text');
+    const confirmSendSpinner = document.getElementById('confirm-send-spinner');
+
+    // Disable button and show spinner
+    confirmSendButton.disabled = true;
+    confirmSendText.textContent = '送信中...';
+    confirmSendSpinner.classList.remove('hidden');
+
+    // Send article URL to server
+    const response = await chrome.runtime.sendMessage({
+      action: 'sendArticleUrl',
+      url: pendingArticle.url,
+      title: pendingArticle.title
+    });
+
+    if (response.success) {
+      showState('success');
+      pendingArticle = null;
+    } else {
+      errorMessage.textContent = response.error || '送信に失敗しました';
+      showState('error');
+    }
+  } catch (error) {
+    console.error('[CuraQ] Send error:', error);
+    errorMessage.textContent = error.message || '送信に失敗しました';
+    showState('error');
   }
 }
 
@@ -233,6 +276,16 @@ viewDashboardButton.addEventListener('click', () => {
 });
 
 retryButton.addEventListener('click', () => {
+  showState('ready');
+});
+
+// Confirmation screen buttons
+document.getElementById('confirm-send-button').addEventListener('click', () => {
+  sendConfirmedArticle();
+});
+
+document.getElementById('cancel-button').addEventListener('click', () => {
+  pendingArticle = null;
   showState('ready');
 });
 

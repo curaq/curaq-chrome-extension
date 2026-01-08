@@ -48,6 +48,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.action === 'sendArticleUrl') {
+    sendArticleUrl(request.url, request.title).then(sendResponse);
+    return true;
+  }
+
   if (request.action === 'checkToken') {
     checkTokenValid().then(sendResponse);
     return true;
@@ -112,70 +117,55 @@ async function checkTokenValid() {
 }
 
 /**
- * Extract article content and save to CuraQ
+ * Prepare article save (returns URL/title for confirmation)
  */
 async function saveArticleToCuraQ(tab) {
   try {
     const token = await getApiToken();
+    const url = tab.url;
+    const title = tab.title || '';
 
-    // If no token, open GET /share in new tab instead of background save
+    // If no token, open GET /share in new tab
     if (!token) {
-      const url = tab.url;
-      const title = tab.title || '';
       const shareUrl = `https://curaq.pages.dev/share?url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}`;
-
       chrome.tabs.create({ url: shareUrl });
       return { success: true, tokenless: true };
     }
 
-    // Ensure content script is loaded before sending message
-    let response;
-    try {
-      response = await chrome.tabs.sendMessage(tab.id, {
-        action: 'extractContent'
-      });
-    } catch (error) {
-      // Content script not loaded - inject it manually
-      console.log('[CuraQ] Content script not found, injecting...');
+    // Token exists: return URL/title for confirmation popup
+    return {
+      success: true,
+      needsConfirmation: true,
+      url,
+      title
+    };
 
-      try {
-        // Inject content script manually
-        await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          files: ['libs/readability.js', 'libs/turndown.js', 'content.js']
-        });
+  } catch (error) {
+    console.error('[CuraQ] Preparation error:', error);
+    const errorMsg = error.message || '記事情報の取得に失敗しました';
+    return { success: false, error: errorMsg };
+  }
+}
 
-        // Wait a moment for script to initialize
-        await new Promise(resolve => setTimeout(resolve, 100));
+/**
+ * Send article URL to CuraQ API (no page content)
+ */
+async function sendArticleUrl(url, title) {
+  try {
+    const token = await getApiToken();
 
-        // Try sending message again
-        response = await chrome.tabs.sendMessage(tab.id, {
-          action: 'extractContent'
-        });
-      } catch (injectError) {
-        console.error('[CuraQ] Failed to inject content script:', injectError);
-        const errorMsg = 'このページでは記事を保存できません';
-        showNotification('エラー', errorMsg);
-        return { success: false, error: errorMsg };
-      }
+    if (!token) {
+      return { success: false, error: 'トークンが設定されていません' };
     }
 
-    if (!response.success) {
-      const errorMsg = response.error || '記事の抽出に失敗しました';
-      showNotification('エラー', errorMsg);
-      return { success: false, error: errorMsg };
-    }
-
-    const { title, url, markdown } = response.data;
-
-    // Send to CuraQ API with token auth
+    // Send only URL and title to CuraQ API (server will fetch content)
     const apiResponse = await fetch(`${CURAQ_API_URL}/articles`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       },
-      body: JSON.stringify({ url, title, markdown })
+      body: JSON.stringify({ url, title })
     });
 
     const result = await apiResponse.json();
@@ -185,7 +175,7 @@ async function saveArticleToCuraQ(tab) {
         ? `「${title}」を再登録しました`
         : `「${title}」をCuraQに保存しました`;
       showNotification('保存完了', message);
-      return { success: true };
+      return { success: true, restored: result.restored };
     }
 
     // Handle specific errors
@@ -202,8 +192,8 @@ async function saveArticleToCuraQ(tab) {
     return { success: false, error: errorMsg };
 
   } catch (error) {
-    console.error('[CuraQ] Save error:', error);
-    const errorMsg = error.message || '記事の保存に失敗しました';
+    console.error('[CuraQ] Send error:', error);
+    const errorMsg = error.message || '記事の送信に失敗しました';
     showNotification('エラー', errorMsg);
     return { success: false, error: errorMsg };
   }
