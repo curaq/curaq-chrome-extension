@@ -289,28 +289,31 @@ document.getElementById('cancel-button').addEventListener('click', () => {
   showState('ready');
 });
 
-settingsToggle.addEventListener('click', () => {
-  if (!settingsState.classList.contains('hidden')) {
-    // Already in settings, go back
-    checkTokenStatus();
-  } else {
-    // Show settings
-    showState('settings');
-
-    // Update settings UI based on token status
-    const tokenStatus = window.tokenStatus || { valid: false };
-    const tokenNotSetSection = document.getElementById('token-not-set-section');
-    const tokenSetSection = document.getElementById('token-set-section');
-
-    if (tokenStatus.valid) {
-      tokenNotSetSection.classList.add('hidden');
-      tokenSetSection.classList.remove('hidden');
+// Settings toggle is temporarily disabled
+if (settingsToggle) {
+  settingsToggle.addEventListener('click', () => {
+    if (!settingsState.classList.contains('hidden')) {
+      // Already in settings, go back
+      checkTokenStatus();
     } else {
-      tokenNotSetSection.classList.remove('hidden');
-      tokenSetSection.classList.add('hidden');
+      // Show settings
+      showState('settings');
+
+      // Update settings UI based on token status
+      const tokenStatus = window.tokenStatus || { valid: false };
+      const tokenNotSetSection = document.getElementById('token-not-set-section');
+      const tokenSetSection = document.getElementById('token-set-section');
+
+      if (tokenStatus.valid) {
+        tokenNotSetSection.classList.add('hidden');
+        tokenSetSection.classList.remove('hidden');
+      } else {
+        tokenNotSetSection.classList.remove('hidden');
+        tokenSetSection.classList.add('hidden');
+      }
     }
-  }
-});
+  });
+}
 
 backButton.addEventListener('click', () => {
   // Re-check token status to update UI hints
