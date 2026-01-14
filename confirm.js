@@ -77,6 +77,10 @@ async function sendArticle() {
 
     if (response.success) {
       showState('success');
+      // Auto-close window after 2 seconds
+      setTimeout(() => {
+        window.close();
+      }, 2000);
     } else {
       errorMessage.textContent = response.error || '送信に失敗しました';
       showState('error');

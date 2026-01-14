@@ -84,12 +84,30 @@ function showState(state) {
 }
 
 // Check token status
-// Commented out for v1.0 - will be used in future Pro features
 async function checkTokenStatus() {
-  
-  // For v1.0, always show ready state
-  previousState = 'ready';
-  showState('ready');
+  showState('loading');
+
+  // Check if token exists and is valid
+  const response = await chrome.runtime.sendMessage({ action: 'checkToken' });
+  console.log('[CuraQ Popup] Initial token check:', response);
+  window.tokenStatus = response;
+
+  if (response.valid) {
+    // Valid Pro token: show ready state without hint
+    previousState = 'ready';
+    showState('ready');
+    document.getElementById('no-token-hint').classList.add('hidden');
+  } else if (response.error === 'no-token') {
+    // No token saved: show hint to set up token
+    previousState = 'ready';
+    showState('ready');
+    document.getElementById('no-token-hint').classList.remove('hidden');
+  } else {
+    // Token exists but invalid/no-pro: show hint but keep token
+    previousState = 'ready';
+    showState('ready');
+    document.getElementById('no-token-hint').classList.remove('hidden');
+  }
 }
 
 // Save token
@@ -105,6 +123,7 @@ async function saveToken(token) {
 
   // Verify it works
   const response = await chrome.runtime.sendMessage({ action: 'checkToken' });
+  console.log('[CuraQ Popup] Token check response:', response);
 
   window.tokenStatus = response;
 
@@ -114,17 +133,16 @@ async function saveToken(token) {
     // Hide Pro plan hint when token is valid
     document.getElementById('no-token-hint').classList.add('hidden');
   } else if (response.error === 'no-pro-plan') {
+    // Token is valid but user doesn't have Pro plan - keep token
     previousState = 'ready';
     showState('ready');
     // Show Pro plan hint for non-Pro users
     document.getElementById('no-token-hint').classList.remove('hidden');
   } else {
-    // Token invalid - clear it and show error
-    await chrome.runtime.sendMessage({ action: 'clearToken' });
-    previousState = 'ready';
-    showState('ready');
-    // Show Pro plan hint
-    document.getElementById('no-token-hint').classList.remove('hidden');
+    // Token invalid - show error but don't delete immediately
+    console.warn('[CuraQ Popup] Token validation failed:', response.error);
+    errorMessage.textContent = `トークンの検証に失敗しました: ${response.error}`;
+    showState('error');
   }
 }
 
@@ -134,36 +152,53 @@ let pendingArticle = null;
 // Save current article
 async function saveCurrentArticle() {
   try {
-    // Disable button and show spinner
-    saveButton.disabled = true;
-    saveButtonText.textContent = '開いています...';
-    saveSpinner.classList.remove('hidden');
-
     // Get current tab
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-    // Send message to background script to open share page
-    const response = await chrome.runtime.sendMessage({
-      action: 'saveArticle',
-      tabId: tab.id
-    });
+    // Check if user has token
+    const tokenStatus = window.tokenStatus || { valid: false };
 
-    if (response.success) {
-      // Share page opened in new tab, close popup
-      window.close();
+    if (tokenStatus.valid) {
+      // Pro user with valid token: show confirmation in popup
+      pendingArticle = {
+        url: tab.url,
+        title: tab.title || ''
+      };
+
+      // Update confirmation UI
+      document.getElementById('confirm-title').textContent = pendingArticle.title;
+      document.getElementById('confirm-url').textContent = pendingArticle.url;
+
+      // Show confirmation state
+      showState('confirmation');
     } else {
-      errorMessage.textContent = response.error || '保存に失敗しました';
-      showState('error');
+      // Free user or no token: open share page in new tab
+      saveButton.disabled = true;
+      saveButtonText.textContent = '開いています...';
+      saveSpinner.classList.remove('hidden');
+
+      const response = await chrome.runtime.sendMessage({
+        action: 'saveArticle',
+        tabId: tab.id
+      });
+
+      if (response.success) {
+        // Share page opened in new tab, close popup
+        window.close();
+      } else {
+        errorMessage.textContent = response.error || '保存に失敗しました';
+        showState('error');
+      }
+
+      // Re-enable button
+      saveButton.disabled = false;
+      saveButtonText.textContent = 'この記事を保存';
+      saveSpinner.classList.add('hidden');
     }
   } catch (error) {
     console.error('[CuraQ] Save error:', error);
     errorMessage.textContent = error.message || '保存に失敗しました';
     showState('error');
-  } finally {
-    // Re-enable button
-    saveButton.disabled = false;
-    saveButtonText.textContent = 'この記事を保存';
-    saveSpinner.classList.add('hidden');
   }
 }
 
@@ -192,6 +227,10 @@ async function sendConfirmedArticle() {
     if (response.success) {
       showState('success');
       pendingArticle = null;
+      // Auto-close popup after 1.5 seconds
+      setTimeout(() => {
+        window.close();
+      }, 1500);
     } else {
       errorMessage.textContent = response.error || '送信に失敗しました';
       showState('error');
@@ -206,11 +245,10 @@ async function sendConfirmedArticle() {
 // Clear token
 async function clearToken() {
   await chrome.runtime.sendMessage({ action: 'clearToken' });
+  console.log('[CuraQ Popup] Token cleared');
   window.tokenStatus = { valid: false, error: 'no-token' };
-  previousState = 'ready';
-  showState('ready');
-  // Show Pro plan hint after clearing token
-  document.getElementById('no-token-hint').classList.remove('hidden');
+  // Go back to ready state and re-check status
+  checkTokenStatus();
 }
 
 // Event listeners
@@ -255,7 +293,7 @@ viewDashboardButton.addEventListener('click', () => {
 });
 
 retryButton.addEventListener('click', () => {
-  showState('ready');
+  checkTokenStatus();
 });
 
 // Confirmation screen buttons
@@ -268,9 +306,9 @@ document.getElementById('cancel-button').addEventListener('click', () => {
   showState('ready');
 });
 
-// Settings toggle is temporarily disabled
+// Settings toggle
 if (settingsToggle) {
-  settingsToggle.addEventListener('click', () => {
+  settingsToggle.addEventListener('click', async () => {
     if (!settingsState.classList.contains('hidden')) {
       // Already in settings, go back
       checkTokenStatus();
@@ -278,17 +316,21 @@ if (settingsToggle) {
       // Show settings
       showState('settings');
 
-      // Update settings UI based on token status
-      const tokenStatus = window.tokenStatus || { valid: false };
+      // Check if token is saved (not just valid)
+      const response = await chrome.runtime.sendMessage({ action: 'checkToken' });
+      console.log('[CuraQ Popup] Settings opened, token status:', response);
+
       const tokenNotSetSection = document.getElementById('token-not-set-section');
       const tokenSetSection = document.getElementById('token-set-section');
 
-      if (tokenStatus.valid) {
-        tokenNotSetSection.classList.add('hidden');
-        tokenSetSection.classList.remove('hidden');
-      } else {
+      if (response.error === 'no-token') {
+        // No token saved at all
         tokenNotSetSection.classList.remove('hidden');
         tokenSetSection.classList.add('hidden');
+      } else {
+        // Token is saved (valid or not)
+        tokenNotSetSection.classList.add('hidden');
+        tokenSetSection.classList.remove('hidden');
       }
     }
   });
@@ -301,6 +343,14 @@ backButton.addEventListener('click', () => {
 
 clearTokenButton.addEventListener('click', () => {
   clearToken();
+});
+
+// Setup token button from hint
+document.getElementById('setup-token-button').addEventListener('click', () => {
+  showState('settings');
+  // Update settings UI to show token input
+  document.getElementById('token-not-set-section').classList.remove('hidden');
+  document.getElementById('token-set-section').classList.add('hidden');
 });
 
 // Initialize popup
